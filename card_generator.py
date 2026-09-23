@@ -1,236 +1,39 @@
-import random
-from typing import Dict, List
+from pathlib import Path
+from typing import Optional
 
-NORMAL_PLAYERS = [
-    {
-        "id": "ROMARIO",
-        "name": "Romário",
-        "ovr": 85,
-        "attack": 88,
-        "defense": 64,
-        "physical": 80,
-        "energy": 85,
-        "position": "ATA",
-        "rarity": "normal",
-        "is_dragon": False,
-    },
-    {
-        "id": "LUIS_FABIANO",
-        "name": "Luis Fabiano",
-        "ovr": 85,
-        "attack": 86,
-        "defense": 62,
-        "physical": 82,
-        "energy": 83,
-        "position": "ATA",
-        "rarity": "normal",
-        "is_dragon": False,
-    },
-    {
-        "id": "FELIPE_MELO",
-        "name": "Felipe Melo",
-        "ovr": 85,
-        "attack": 71,
-        "defense": 86,
-        "physical": 86,
-        "energy": 80,
-        "position": "VOL",
-        "rarity": "normal",
-        "is_dragon": False,
-    },
-    {
-        "id": "DIEGO_COSTA",
-        "name": "Diego Costa",
-        "ovr": 85,
-        "attack": 84,
-        "defense": 66,
-        "physical": 87,
-        "energy": 82,
-        "position": "ATA",
-        "rarity": "normal",
-        "is_dragon": False,
-    },
-    {
-        "id": "GATTUSO",
-        "name": "Gattuso",
-        "ovr": 85,
-        "attack": 72,
-        "defense": 82,
-        "physical": 88,
-        "energy": 84,
-        "position": "VOL",
-        "rarity": "normal",
-        "is_dragon": False,
-    },
-    {
-        "id": "MATERAZZI",
-        "name": "Materazzi",
-        "ovr": 85,
-        "attack": 68,
-        "defense": 88,
-        "physical": 90,
-        "energy": 76,
-        "position": "ZAG",
-        "rarity": "normal",
-        "is_dragon": False,
-    },
-    {
-        "id": "JOEY_BARTON",
-        "name": "Joey Barton",
-        "ovr": 85,
-        "attack": 74,
-        "defense": 78,
-        "physical": 84,
-        "energy": 80,
-        "position": "VOL",
-        "rarity": "normal",
-        "is_dragon": False,
-    },
-    {
-        "id": "NIGEL_DE_JONG",
-        "name": "Nigel de Jong",
-        "ovr": 85,
-        "attack": 70,
-        "defense": 82,
-        "physical": 88,
-        "energy": 81,
-        "position": "VOL",
-        "rarity": "normal",
-        "is_dragon": False,
-    },
-    {
-        "id": "DANI_ALVES",
-        "name": "Dani Alves",
-        "ovr": 85,
-        "attack": 80,
-        "defense": 75,
-        "physical": 80,
-        "energy": 82,
-        "position": "LD",
-        "rarity": "normal",
-        "is_dragon": False,
-    },
-    {
-        "id": "MEDHI_BENATIA",
-        "name": "Medhi Benatia",
-        "ovr": 85,
-        "attack": 66,
-        "defense": 87,
-        "physical": 89,
-        "energy": 78,
-        "position": "ZAG",
-        "rarity": "normal",
-        "is_dragon": False,
-    },
-    {
-        "id": "ARTURO_VIDAL",
-        "name": "Arturo Vidal",
-        "ovr": 85,
-        "attack": 80,
-        "defense": 79,
-        "physical": 87,
-        "energy": 84,
-        "position": "VOL",
-        "rarity": "normal",
-        "is_dragon": False,
-    },
-    {
-        "id": "LUIS_SUAREZ",
-        "name": "Luis Suárez",
-        "ovr": 85,
-        "attack": 89,
-        "defense": 66,
-        "physical": 84,
-        "energy": 83,
-        "position": "ATA",
-        "rarity": "normal",
-        "is_dragon": False,
-    },
-    {
-        "id": "ZLATAN_IBRAHIMOVIC",
-        "name": "Zlatan Ibrahimović",
-        "ovr": 85,
-        "attack": 92,
-        "defense": 68,
-        "physical": 83,
-        "energy": 82,
-        "position": "ATA",
-        "rarity": "normal",
-        "is_dragon": False,
-    },
-    {
-        "id": "ERIC_CANTONA",
-        "name": "Eric Cantona",
-        "ovr": 85,
-        "attack": 87,
-        "defense": 70,
-        "physical": 81,
-        "energy": 86,
-        "position": "ATA",
-        "rarity": "normal",
-        "is_dragon": False,
-    },
-    {
-        "id": "ROY_KEANE",
-        "name": "Roy Keane",
-        "ovr": 85,
-        "attack": 76,
-        "defense": 81,
-        "physical": 89,
-        "energy": 80,
-        "position": "VOL",
-        "rarity": "normal",
-        "is_dragon": False,
-    },
-]
+from PIL import Image, ImageDraw, ImageFont
 
-EXCLUSIVE_PLAYERS = [
-    {
-        "id": "PEPE",
-        "name": "Pepe",
-        "ovr": 100,
-        "attack": 96,
-        "defense": 94,
-        "physical": 97,
-        "energy": 95,
-        "position": "ZAG",
-        "rarity": "exclusive",
-        "is_dragon": True,
-    },
-    {
-        "id": "SERGIO_RAMOS",
-        "name": "Sergio Ramos",
-        "ovr": 100,
-        "attack": 92,
-        "defense": 95,
-        "physical": 98,
-        "energy": 93,
-        "position": "ZAG",
-        "rarity": "exclusive",
-        "is_dragon": True,
-    },
-]
+from config import CARD_CACHE_PATH
+from game_data import PLAYER_LIBRARY
 
-PLAYER_LIBRARY = {player["id"]: player for player in NORMAL_PLAYERS + EXCLUSIVE_PLAYERS}
-ALL_PLAYERS = NORMAL_PLAYERS + EXCLUSIVE_PLAYERS
+DEFAULT_FONT_PATHS = ["/System/Library/Fonts/Supplemental/Arial Bold.ttf", "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", "C:/Windows/Fonts/arialbd.ttf"]
 
-STYLES = {
-    "Ataque": {"offense_bonus": 1.18, "defense_bonus": 0.92, "energy_cost": 1.7, "aggression": 1.15},
-    "Defesa": {"offense_bonus": 0.92, "defense_bonus": 1.2, "energy_cost": 0.9, "aggression": 0.75},
-    "Contra-ataque": {"offense_bonus": 1.05, "defense_bonus": 1.08, "energy_cost": 1.0, "aggression": 0.9},
-    "Equilibrado": {"offense_bonus": 1.0, "defense_bonus": 1.0, "energy_cost": 1.0, "aggression": 1.0},
-    "Pressão": {"offense_bonus": 1.12, "defense_bonus": 0.96, "energy_cost": 1.35, "aggression": 1.2},
-    "Paciência": {"offense_bonus": 0.98, "defense_bonus": 1.06, "energy_cost": 0.8, "aggression": 0.82},
-}
+def _load_font(size: int):
+    for path in DEFAULT_FONT_PATHS:
+        try:
+            return ImageFont.truetype(path, size=size)
+        except OSError:
+            pass
+    return ImageFont.load_default()
 
-STARTER_PLAYERS = ["ROMARIO", "LUIS_FABIANO", "FELIPE_MELO"]
-DRAGON_DROP_RATE = 0.000000001
-
-
-def get_player_by_id(player_id: str) -> Dict:
-    return PLAYER_LIBRARY.get(player_id, PLAYER_LIBRARY["ROMARIO"]).copy()
-
-
-def get_random_player(is_exclusive: bool = False) -> Dict:
-    pool = EXCLUSIVE_PLAYERS if is_exclusive else NORMAL_PLAYERS
-    return random.choice(pool).copy()
+def generate_card(player_id: str, output_dir: Optional[Path] = None) -> Path:
+    player = PLAYER_LIBRARY.get(player_id, PLAYER_LIBRARY["ROMARIO"])
+    output_dir = output_dir or CARD_CACHE_PATH
+    output_dir.mkdir(parents=True, exist_ok=True)
+    path = output_dir / f"{player_id.lower()}.png"
+    image = Image.new("RGB", (720, 1040), (28, 20, 20) if player.get("is_dragon") else (18, 18, 22))
+    draw = ImageDraw.Draw(image)
+    color = (255, 215, 0) if player.get("is_dragon") else (222, 18, 40)
+    draw.rounded_rectangle((30, 30, 690, 1010), radius=32, fill=(10, 10, 14), outline=color, width=6)
+    draw.text((360, 100), "UFC DRAGON" if player.get("is_dragon") else "UFC FIGHTER", fill=color, anchor="mm", font=_load_font(30))
+    draw.text((360, 190), str(player["ovr"]), fill="white", anchor="mm", font=_load_font(84))
+    draw.text((360, 290), player["name"].upper(), fill="white", anchor="mm", font=_load_font(40))
+    stats = [("ATAQUE", player["attack"]), ("DEFESA", player["defense"]), ("FÍSICO", player["physical"]), ("ENERGIA", player["energy"])]
+    for i, (name, value) in enumerate(stats):
+        x, y = 140 + (i % 2) * 240, 450 + (i // 2) * 160
+        draw.rounded_rectangle((x, y, x + 180, y + 110), radius=18, fill=(40, 40, 48), outline=color)
+        draw.text((x + 90, y + 30), name, fill=(200, 200, 210), anchor="mm", font=_load_font(17))
+        draw.text((x + 90, y + 75), str(value), fill="white", anchor="mm", font=_load_font(36))
+    draw.text((360, 900), f"OVR {player['ovr']}", fill="white", anchor="mm", font=_load_font(30))
+    image.save(path)
+    return path

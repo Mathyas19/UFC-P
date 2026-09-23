@@ -1,105 +1,138 @@
+import random
+import sqlite3
 from pathlib import Path
-from typing import Optional
+from typing import Dict, List
 
-from PIL import Image, ImageDraw, ImageFont
-
-from config import CARD_CACHE_PATH
-from game_data import PLAYER_LIBRARY
-
-
-DEFAULT_FONT_PATHS = [
-    "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
-    "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
-    "C:/Windows/Fonts/arialbd.ttf",
-]
+from config import DATABASE_PATH
+from game_data import (
+    DRAGON_DROP_RATE,
+    EXCLUSIVE_PLAYERS,
+    NORMAL_PLAYERS,
+    STARTER_PLAYERS,
+    get_player_by_id,
+)
 
 
-def _load_font(size: int, bold: bool = True):
-    for font_path in DEFAULT_FONT_PATHS:
-        try:
-            return ImageFont.truetype(font_path, size=size)
-        except Exception:
-            continue
-    return ImageFont.load_default()
+class DatabaseManager:
+    def __init__(self, db_path: Path = DATABASE_PATH):
+        self.db_path = Path(db_path)
+        self.db_path.parent.mkdir(parents=True, exist_ok=True)
+        self.ensure_schema()
 
+    def _connect(self) -> sqlite3.Connection:
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        return conn
 
-def _rounded_box(draw, xy, radius=30, fill=(255, 255, 255, 240), outline=None, width=2):
-    draw.rounded_rectangle(xy, radius=radius, fill=fill, outline=outline, width=width)
+    def ensure_schema(self):
+        with self._connect() as conn:
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS users (
+                    user_id TEXT PRIMARY KEY,
+                    username TEXT,
+                    level INTEGER DEFAULT 0,
+                    ufc_points INTEGER DEFAULT 0,
+                    energy INTEGER DEFAULT 50,
+                    wins INTEGER DEFAULT 0,
+                    draws INTEGER DEFAULT 0,
+                    losses INTEGER DEFAULT 0,
+                    matches_played INTEGER DEFAULT 0,
+                    dragon_boxes INTEGER DEFAULT 0,
+                    created_at TEXT DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS user_players (
+                    user_id TEXT,
+                    player_id TEXT,
+                    is_dragon INTEGER DEFAULT 0,
+                    quantity INTEGER DEFAULT 1,
+                    obtained_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                    PRIMARY KEY (user_id, player_id)
+                )
+            """)
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS match_history (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id TEXT,
+                    opponent_id TEXT,
+                    result TEXT,
+                    fighter TEXT,
+                    opponent_fighter TEXT,
+                    summary TEXT,
+                    created_at TEXT DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
 
+    def get_or_create_user(self, user_id: str, username: str) -> Dict:
+        with self._connect() as conn:
+            profile = conn.execute("SELECT * FROM users WHERE user_id = ?", (user_id,)).fetchone()
+            if profile is None:
+                conn.execute(
+                    "INSERT INTO users (user_id, username, level, ufc_points, energy) VALUES (?, ?, 0, 0, 50)",
+                    (user_id, username),
+                )
+                for player_id in STARTER_PLAYERS:
+                    conn.execute(
+                        "INSERT OR IGNORE INTO user_players (user_id, player_id, is_dragon, quantity) VALUES (?, ?, 0, 1)",
+                        (user_id, player_id),
+                    )
+        return self.get_user_profile(user_id)
 
-def generate_card(player_id: str, output_dir: Optional[Path] = None) -> Path:
-    player = PLAYER_LIBRARY.get(player_id, PLAYER_LIBRARY["ROMARIO"]).copy()
-    is_dragon = bool(player.get("is_dragon"))
+    def get_user_profile(self, user_id: str) -> Dict:
+        with self._connect() as conn:
+            row = conn.execute("SELECT * FROM users WHERE user_id = ?", (user_id,)).fetchone()
+            if row is None:
+                return {"user_id": user_id, "username": "Desconhecido", "level": 0, "ufc_points": 0, "energy": 50, "wins": 0, "draws": 0, "losses": 0, "matches_played": 0, "dragon_boxes": 0, "player_count": 0}
+            player_count = conn.execute("SELECT COUNT(*) FROM user_players WHERE user_id = ?", (user_id,)).fetchone()[0]
+            return {"user_id": row["user_id"], "username": row["username"], "level": max(0, min(100, row["ufc_points"])), "ufc_points": row["ufc_points"], "energy": row["energy"], "wins": row["wins"], "draws": row["draws"], "losses": row["losses"], "matches_played": row["matches_played"], "dragon_boxes": row["dragon_boxes"], "player_count": player_count}
 
-    output_dir = output_dir or CARD_CACHE_PATH
-    output_dir.mkdir(parents=True, exist_ok=True)
-    output_path = output_dir / f"{player_id.lower()}.png"
+    def get_user_players(self, user_id: str) -> List[Dict]:
+        with self._connect() as conn:
+            rows = conn.execute("SELECT player_id, is_dragon, quantity FROM user_players WHERE user_id = ? ORDER BY player_id ASC", (user_id,)).fetchall()
+        players = []
+        for row in rows:
+            player = get_player_by_id(row["player_id"])
+            players.append({"player_id": row["player_id"], "name": player["name"], "ovr": player["ovr"], "position": player["position"], "is_dragon": bool(row["is_dragon"]), "quantity": row["quantity"], "attack": player["attack"], "defense": player["defense"], "physical": player["physical"], "energy": player["energy"]})
+        return players
 
-    width, height = 720, 1040
-    image = Image.new("RGBA", (width, height), (18, 18, 22, 255))
-    draw = ImageDraw.Draw(image)
+    def add_player_to_inventory(self, user_id: str, player_id: str, is_dragon: bool = False) -> List[Dict]:
+        with self._connect() as conn:
+            conn.execute("""INSERT INTO user_players (user_id, player_id, is_dragon, quantity) VALUES (?, ?, ?, 1)
+                ON CONFLICT(user_id, player_id) DO UPDATE SET quantity = quantity + 1""", (user_id, player_id, int(is_dragon)))
+        return self.get_user_players(user_id)
 
-    if is_dragon:
-        bg_gradient = Image.new("RGBA", (width, height), (24, 18, 12, 255))
-        draw_bg = ImageDraw.Draw(bg_gradient)
-        for y in range(height):
-            ratio = y / height
-            r = int(40 + ratio * 130)
-            g = int(30 + ratio * 110)
-            b = int(18 + ratio * 45)
-            draw_bg.line((0, y, width, y), fill=(r, g, b, 255))
-        image = bg_gradient
-        draw = ImageDraw.Draw(image)
-        border_color = (255, 215, 0, 255)
-        accent_color = (255, 200, 70, 255)
-    else:
-        border_color = (222, 18, 40, 255)
-        accent_color = (120, 120, 130, 255)
+    def record_match_result(self, user_id: str, opponent_id: str, result: str, fighter: str, opponent_fighter: str, summary: str):
+        with self._connect() as conn:
+            if result == "win":
+                conn.execute("UPDATE users SET wins=wins+1, ufc_points=ufc_points+2, matches_played=matches_played+1 WHERE user_id=?", (user_id,))
+            elif result == "draw":
+                conn.execute("UPDATE users SET draws=draws+1, matches_played=matches_played+1 WHERE user_id=?", (user_id,))
+            else:
+                conn.execute("UPDATE users SET losses=losses+1, ufc_points=ufc_points-2, matches_played=matches_played+1 WHERE user_id=?", (user_id,))
+            conn.execute("INSERT INTO match_history (user_id, opponent_id, result, fighter, opponent_fighter, summary) VALUES (?, ?, ?, ?, ?, ?)", (user_id, opponent_id, result, fighter, opponent_fighter, summary))
+        self.award_dragon_box_if_needed(user_id)
 
-    _rounded_box(draw, (30, 30, width - 30, height - 30), radius=32, fill=(10, 10, 14, 245), outline=border_color, width=6)
-    _rounded_box(draw, (48, 48, width - 48, height - 48), radius=24, fill=(20, 20, 24, 250), outline=accent_color, width=3)
+    def award_dragon_box_if_needed(self, user_id: str):
+        if self.get_user_profile(user_id)["matches_played"] % 50 == 0 and self.get_user_profile(user_id)["matches_played"] > 0:
+            with self._connect() as conn:
+                conn.execute("UPDATE users SET dragon_boxes=dragon_boxes+1 WHERE user_id=?", (user_id,))
 
-    top_bar = Image.new("RGBA", (width - 80, 140), (0, 0, 0, 0))
-    draw_top = ImageDraw.Draw(top_bar)
-    draw_top.rounded_rectangle((0, 0, width - 80, 140), radius=22, fill=(255, 255, 255, 30))
-    image.alpha_composite(top_bar, (40, 50))
+    def use_energy(self, user_id: str, amount: int = 1):
+        with self._connect() as conn:
+            conn.execute("UPDATE users SET energy=MAX(0, energy-?) WHERE user_id=?", (amount, user_id))
 
-    if is_dragon:
-        draw.text((width // 2, 92), "UFC DRAGON", fill=(255, 224, 112, 255), anchor="mm", font=_load_font(28, True))
-    else:
-        draw.text((width // 2, 92), "UFC FIGHTER", fill=(220, 220, 220, 255), anchor="mm", font=_load_font(26, True))
+    def open_dragon_chest(self, user_id: str) -> Dict:
+        if self.get_user_profile(user_id)["dragon_boxes"] <= 0:
+            return {"opened": False, "reason": "Você não possui nenhuma Caixa UFC Dragon.", "reward": None, "is_dragon": False}
+        with self._connect() as conn:
+            conn.execute("UPDATE users SET dragon_boxes=dragon_boxes-1 WHERE user_id=?", (user_id,))
+        is_dragon = random.random() <= DRAGON_DROP_RATE
+        pool = EXCLUSIVE_PLAYERS if is_dragon else NORMAL_PLAYERS
+        reward = random.choice(pool)["id"]
+        self.add_player_to_inventory(user_id, reward, is_dragon)
+        return {"opened": True, "reason": "Você abriu uma Caixa UFC Dragon e encontrou um jogador exclusivo!" if is_dragon else "Você abriu uma Caixa UFC Dragon, mas não conseguiu um dragão.", "reward": reward, "is_dragon": is_dragon}
 
-    ovrcode = str(player["ovr"])
-    draw.text((width // 2, 165), ovrcode, fill=(255, 255, 255, 255), anchor="mm", font=_load_font(84, True))
-
-    name = player["name"].upper()
-    draw.text((width // 2, 265), name, fill=(255, 255, 255, 255), anchor="mm", font=_load_font(42, True))
-
-    if is_dragon:
-        badge_color = (255, 210, 70, 255)
-        draw.rounded_rectangle((170, 300, 550, 350), radius=18, fill=badge_color)
-        draw.text((360, 325), "EXCLUSIVO", fill=(20, 20, 20, 255), anchor="mm", font=_load_font(22, True))
-    else:
-        draw.rounded_rectangle((220, 300, 500, 350), radius=18, fill=(215, 25, 45, 255))
-        draw.text((360, 325), f"{player['position']} • {player['rarity'].upper()}", fill=(255, 255, 255, 255), anchor="mm", font=_load_font(20, True))
-
-    stats_y = 430
-    stat_names = ["ATAQUE", "DEFESA", "FÍSICO", "ENERGIA"]
-    stat_values = [player["attack"], player["defense"], player["physical"], player["energy"]]
-    for index, name in enumerate(stat_names):
-        x = 140 + (index % 2) * 240
-        y = stats_y + (index // 2) * 160
-        draw.rounded_rectangle((x, y, x + 180, y + 110), radius=18, fill=(255, 255, 255, 30), outline=border_color)
-        draw.text((x + 90, y + 28), name, fill=(200, 200, 210, 255), anchor="mm", font=_load_font(18, True))
-        draw.text((x + 90, y + 72), str(stat_values[index]), fill=(255, 255, 255, 255), anchor="mm", font=_load_font(38, True))
-
-    draw.rounded_rectangle((120, 820, 600, 900), radius=18, fill=(255, 255, 255, 18), outline=accent_color)
-    draw.text((360, 860), f"OVR {player['ovr']}", fill=(255, 255, 255, 255), anchor="mm", font=_load_font(28, True))
-
-    if is_dragon:
-        draw.text((360, 965), "DRAGÃO DOURADO", fill=(255, 224, 120, 255), anchor="mm", font=_load_font(30, True))
-    else:
-        draw.text((360, 965), "LUTADOR OFENSIVO", fill=(220, 220, 220, 255), anchor="mm", font=_load_font(30, True))
-
-    image.save(output_path)
-    return output_path
+    def get_fighter_for_user(self, user_id: str) -> str:
+        players = self.get_user_players(user_id)
+        return max(players, key=lambda item: item["ovr"])["player_id"] if players else "ROMARIO"
