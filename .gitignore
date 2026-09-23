@@ -1,0 +1,68 @@
+# UFC-P
+
+Bot de Discord em Python com sistema de jogadores, ranked, energia, UFC Dragon e geração de cartas com Pillow.
+
+## Visão geral
+
+Este projeto implementa um sistema de bot inspirado em UFC, com:
+
+- jogadores de futebol agressivos e provocadores como lutadores
+- sistema de ranked com fila de espera
+- energia por luta e recuperação por hora
+- nível por UFC Points
+- perfil com estatísticas e inventário
+- caixas UFC Dragon com chance extremamente rara de obter jogadores exclusivos de 100 OVR
+- geração de cartas em PNG usando Pillow
+- persistência em SQLite
+
+## Estrutura
+
+- `bot.py` — bot principal do Discord
+- `database.py` — persistência SQLite e regras do jogo
+- `game_data.py` — jogadores, estilos e regras de combate
+- `card_generator.py` — criação das imagens das cartas
+- `config.py` — configuração do bot e caminhos
+- `requirements.txt` — dependências
+
+## Instalação
+
+```bash
+python -m venv .venv
+source .venv/bin/activate  # Linux/Mac
+# ou .venv\Scripts\activate  # Windows
+pip install -r requirements.txt
+```
+
+## Configuração
+
+Crie um arquivo `.env` com:
+
+```env
+DISCORD_TOKEN=SEU_TOKEN_AQUI
+```
+
+Ou defina a variável de ambiente diretamente no terminal antes de rodar o bot:
+
+```bash
+export DISCORD_TOKEN=SEU_TOKEN_AQUI
+python bot.py
+```
+
+## Executar
+
+```bash
+python bot.py
+```
+
+## Comandos principais
+
+- `/perfil` — mostra perfil do usuário com nível, energia, vitórias, derrotas, UFC Points e inventário
+- `/rank-participar` — entra na fila ranked
+- `/abrir-caixa` — abre uma Caixa UFC Dragon
+- `/jogadores` — lista os jogadores do usuário
+
+## Observações
+
+- A arte das cartas foi organizada para permitir substituição por um designer final depois.
+- O sistema usa placeholders visuais e lógica funcional completa para o jogo.
+- Todos os dados são salvos em SQLite para persistência entre reinicializações.
